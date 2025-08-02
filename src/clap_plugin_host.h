@@ -21,6 +21,13 @@ using PluginProxy = clap::helpers::PluginProxy<PluginHost_MH, PluginHost_CL>;
 extern template class clap::helpers::PluginProxy<PluginHost_MH, PluginHost_CL>;
 
 class ClapPluginHost final : public BaseHost {
+private:
+	/* clap host callbacks */
+	void scanParams();
+	void scanParam(int32_t index);
+
+	void scanQuickControls();
+
 protected:
 	/////////////////////////
 	// clap::helpers::Host //

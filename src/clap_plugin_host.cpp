@@ -43,9 +43,6 @@ void ClapPluginHost::guiClosed(bool wasDestroyed) noexcept {
 void ClapPluginHost::logLog(clap_log_severity severity, const char *message) const noexcept {
 	godot::print_line("Requesting log");
 }
-void ClapPluginHost::paramsRescan(clap_param_rescan_flags flags) noexcept {
-	godot::print_line("Requesting rescan");
-}
 void ClapPluginHost::paramsClear(clap_id paramId, clap_param_clear_flags flags) noexcept {
 	godot::print_line("Requesting clear");
 }
@@ -158,11 +155,191 @@ bool ClapPluginHost::load(const char *path, int plugin_index) {
 		return false;
 	}
 
-	// TODO
-	// scanParams();
-	// scanQuickControls();
-	//
-	// pluginLoadedChanged(true);
+	scanParams();
+	scanQuickControls();
 
 	return true;
+}
+
+void ClapPluginHost::scanParams() { paramsRescan(CLAP_PARAM_RESCAN_ALL); }
+
+void ClapPluginHost::paramsRescan(uint32_t flags) noexcept {
+   // checkForMainThread();
+
+   if (!_plugin->canUseParams())
+      return;
+
+	godot::print_line("Can use params");
+
+   // // 1. it is forbidden to use CLAP_PARAM_RESCAN_ALL if the plugin is active
+   // if (isPluginActive() && (flags & CLAP_PARAM_RESCAN_ALL)) {
+   //    throw std::logic_error(
+   //       "clap_host_params.recan(CLAP_PARAM_RESCAN_ALL) was called while the plugin is active!");
+   //    return;
+   // }
+   //
+   // // 2. scan the params.
+   // auto count = _plugin->paramsCount();
+   // std::unordered_set<clap_id> paramIds(count * 2);
+   //
+   // for (int32_t i = 0; i < count; ++i) {
+   //    clap_param_info info;
+   //    if (!_plugin->paramsGetInfo(i, &info))
+   //       throw std::logic_error("clap_plugin_params.get_info did return false!");
+   //
+   //    if (info.id == CLAP_INVALID_ID) {
+   //       std::ostringstream msg;
+   //       msg << "clap_plugin_params.get_info() reported a parameter with id = CLAP_INVALID_ID"
+   //           << std::endl
+   //           << " 2. name: " << info.name << ", module: " << info.module << std::endl;
+   //       throw std::logic_error(msg.str());
+   //    }
+   //
+   //    auto it = _params.find(info.id);
+   //
+   //    // check that the parameter is not declared twice
+   //    if (paramIds.count(info.id) > 0) {
+   //       Q_ASSERT(it != _params.end());
+   //
+   //       std::ostringstream msg;
+   //       msg << "the parameter with id: " << info.id << " was declared twice." << std::endl
+   //           << " 1. name: " << it->second->info().name << ", module: " << it->second->info().module
+   //           << std::endl
+   //           << " 2. name: " << info.name << ", module: " << info.module << std::endl;
+   //       throw std::logic_error(msg.str());
+   //    }
+   //    paramIds.insert(info.id);
+   //
+   //    if (it == _params.end()) {
+   //       if (!(flags & CLAP_PARAM_RESCAN_ALL)) {
+   //          std::ostringstream msg;
+   //          msg << "a new parameter was declared, but the flag CLAP_PARAM_RESCAN_ALL was not "
+   //                 "specified; id: "
+   //              << info.id << ", name: " << info.name << ", module: " << info.module << std::endl;
+   //          throw std::logic_error(msg.str());
+   //       }
+   //
+   //       double value = getParamValue(info);
+   //       auto param = std::make_unique<PluginParam>(*this, info, value);
+   //       checkValidParamValue(*param, value);
+   //       _params.insert_or_assign(info.id, std::move(param));
+   //    } else {
+   //       // update param info
+   //       if (!it->second->isInfoEqualTo(info)) {
+   //          if (!clapParamsRescanMayInfoChange(flags)) {
+   //             std::ostringstream msg;
+   //             msg << "a parameter's info did change, but the flag CLAP_PARAM_RESCAN_INFO "
+   //                    "was not specified; id: "
+   //                 << info.id << ", name: " << info.name << ", module: " << info.module
+   //                 << std::endl;
+   //             throw std::logic_error(msg.str());
+   //          }
+   //
+   //          if (!(flags & CLAP_PARAM_RESCAN_ALL) &&
+   //              !it->second->isInfoCriticallyDifferentTo(info)) {
+   //             std::ostringstream msg;
+   //             msg << "a parameter's info has critical changes, but the flag CLAP_PARAM_RESCAN_ALL "
+   //                    "was not specified; id: "
+   //                 << info.id << ", name: " << info.name << ", module: " << info.module
+   //                 << std::endl;
+   //             throw std::logic_error(msg.str());
+   //          }
+   //
+   //          it->second->setInfo(info);
+   //       }
+   //
+   //       double value = getParamValue(info);
+   //       if (it->second->value() != value) {
+   //          if (!clapParamsRescanMayValueChange(flags)) {
+   //             std::ostringstream msg;
+   //             msg << "a parameter's value did change but, but the flag CLAP_PARAM_RESCAN_VALUES "
+   //                    "was not specified; id: "
+   //                 << info.id << ", name: " << info.name << ", module: " << info.module
+   //                 << std::endl;
+   //             throw std::logic_error(msg.str());
+   //          }
+   //
+   //          // update param value
+   //          checkValidParamValue(*it->second, value);
+   //          it->second->setValue(value);
+   //          it->second->setModulation(value);
+   //       }
+   //    }
+   // }
+   //
+   // // remove parameters which are gone
+   // for (auto it = _params.begin(); it != _params.end();) {
+   //    if (paramIds.find(it->first) != paramIds.end())
+   //       ++it;
+   //    else {
+   //       if (!(flags & CLAP_PARAM_RESCAN_ALL)) {
+   //          std::ostringstream msg;
+   //          auto &info = it->second->info();
+   //          msg << "a parameter was removed, but the flag CLAP_PARAM_RESCAN_ALL was not "
+   //                 "specified; id: "
+   //              << info.id << ", name: " << info.name << ", module: " << info.module << std::endl;
+   //          throw std::logic_error(msg.str());
+   //       }
+   //       it = _params.erase(it);
+   //    }
+   // }
+   //
+   // if (flags & CLAP_PARAM_RESCAN_ALL)
+   //    paramsChanged();
+}
+
+void ClapPluginHost::scanQuickControls() {
+	// checkForMainThread();
+
+	if (!_plugin->canUseRemoteControls())
+		return;
+
+	godot::print_line("Can use remote controls");
+
+	// quickControlsSetSelectedPage(CLAP_INVALID_ID);
+	// _remoteControlsPages.clear();
+	// _remoteControlsPagesIndex.clear();
+	//
+	// const auto N = _plugin->remoteControlsCount();
+	// if (N == 0)
+	// 	return;
+	//
+	// _remoteControlsPages.reserve(N);
+	// _remoteControlsPagesIndex.reserve(N);
+	//
+	// clap_id firstPageId = CLAP_INVALID_ID;
+	// for (int i = 0; i < N; ++i) {
+	// 	auto page = std::make_unique<clap_remote_controls_page>();
+	// 	if (!_plugin->remoteControlsGet(i, page.get())) {
+	// 		std::ostringstream msg;
+	// 		msg << "clap_plugin_remote_controls.get_page(" << i << ") failed, while the page count is "
+	// 			<< N;
+	// 		throw std::logic_error(msg.str());
+	// 	}
+	//
+	// 	if (page->page_id == CLAP_INVALID_ID) {
+	// 		std::ostringstream msg;
+	// 		msg << "clap_plugin_remote_controls.get_page(" << i << ") gave an invalid page_id";
+	// 		throw std::invalid_argument(msg.str());
+	// 	}
+	//
+	// 	if (i == 0)
+	// 		firstPageId = page->page_id;
+	//
+	// 	auto it = _remoteControlsPagesIndex.find(page->page_id);
+	// 	if (it != _remoteControlsPagesIndex.end()) {
+	// 		std::ostringstream msg;
+	// 		msg << "clap_plugin_remote_controls.get_page(" << i
+	// 			<< ") gave twice the same page_id:" << page->page_id << std::endl
+	// 			<< " 1. name: " << it->second->page_name << std::endl
+	// 			<< " 2. name: " << page->page_name;
+	// 		throw std::invalid_argument(msg.str());
+	// 	}
+	//
+	// 	_remoteControlsPagesIndex.insert_or_assign(page->page_id, page.get());
+	// 	_remoteControlsPages.emplace_back(std::move(page));
+	// }
+	//
+	// quickControlsPagesChanged();
+	// quickControlsSetSelectedPage(firstPageId);
 }
