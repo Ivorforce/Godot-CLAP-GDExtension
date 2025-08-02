@@ -6,6 +6,7 @@
 #include <godot_cpp/godot.hpp>
 
 #include "example_class.h"
+#include "clap_effect_instance.h"
 
 using namespace godot;
 
@@ -14,7 +15,8 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
-	GDREGISTER_CLASS(ExampleClass);
+	GDREGISTER_CLASS(ClapAudioEffect);
+	GDREGISTER_CLASS(ClapAudioEffectInstance);
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {

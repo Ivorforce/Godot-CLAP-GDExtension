@@ -3,18 +3,21 @@
 #include "godot_cpp/classes/ref_counted.hpp"
 #include "godot_cpp/classes/wrapped.hpp"
 #include "godot_cpp/variant/variant.hpp"
+#include "godot_cpp/classes/audio_effect.hpp"
 
 using namespace godot;
 
-class ExampleClass : public RefCounted {
-	GDCLASS(ExampleClass, RefCounted)
+class ClapAudioEffect : public AudioEffect {
+	GDCLASS(ClapAudioEffect, AudioEffect)
 
 protected:
 	static void _bind_methods();
 
 public:
-	ExampleClass() = default;
-	~ExampleClass() override = default;
+	ClapAudioEffect() = default;
+	~ClapAudioEffect() override = default;
+
+	Ref<AudioEffectInstance> _instantiate() override;
 
 	void print_type(const Variant &p_variant) const;
 };
