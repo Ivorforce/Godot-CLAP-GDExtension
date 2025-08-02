@@ -7,6 +7,7 @@
 #include <clap/helpers/plugin-proxy.hxx>
 #include <clap/helpers/reducing-param-queue.hxx>
 #include <godot_cpp/classes/audio_frame.hpp>
+#include <godot_cpp/classes/input.hpp>
 
 // Instantiate
 template class clap::helpers::Host<PluginHost_MH, PluginHost_CL>;
@@ -169,11 +170,13 @@ void ClapPluginHost::process(const void *p_src_buffer, godot::AudioFrame *p_dst_
 
 	// Fake note in
 	static bool noteIn = false;
-	if (!noteIn) {
-		noteIn = true;
+	bool isPressed = godot::Input::get_singleton()->is_action_pressed("play");
+	if (noteIn != isPressed) {
+		noteIn = isPressed;
+
 		clap_event_note ev;
 		ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-		ev.header.type = CLAP_EVENT_NOTE_ON;
+		ev.header.type = isPressed ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
 		// ev.header.time = sampleOffset;
 		ev.header.time = 0;
 		ev.header.flags = 0;
