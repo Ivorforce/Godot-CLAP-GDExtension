@@ -4,6 +4,11 @@ import sys
 
 from methods import print_error
 
+# TODO Only clap-helpers use exceptions, can disable in the future
+if ARGUMENTS.get("disable_exceptions", None):
+    raise ValueError("NumDot does not currently support compiling without exceptions.")
+ARGUMENTS["disable_exceptions"] = False
+
 
 libname = "EXTENSION-NAME"
 projectdir = "demo"
