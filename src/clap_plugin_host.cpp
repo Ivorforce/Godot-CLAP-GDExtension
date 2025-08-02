@@ -6,6 +6,7 @@
 #include <clap/helpers/host.hxx>
 #include <clap/helpers/plugin-proxy.hxx>
 #include <clap/helpers/reducing-param-queue.hxx>
+#include <godot_cpp/classes/audio_frame.hpp>
 
 // Instantiate
 template class clap::helpers::Host<PluginHost_MH, PluginHost_CL>;
@@ -82,11 +83,11 @@ bool ClapPluginHost::timerSupportUnregisterTimer(clap_id timerId) noexcept {
 }
 bool ClapPluginHost::threadCheckIsMainThread() const noexcept {
 	godot::print_line("Requesting thread check");
-	return false;
+	return true;
 }
 bool ClapPluginHost::threadCheckIsAudioThread() const noexcept {
 	godot::print_line("Requesting thread check");
-	return false;
+	return true;
 }
 bool ClapPluginHost::implementsThreadPool() const noexcept { return false; }
 bool ClapPluginHost::threadPoolRequestExec(uint32_t numTasks) noexcept {
@@ -159,6 +160,111 @@ bool ClapPluginHost::load(const char *path, int plugin_index) {
 	scanQuickControls();
 
 	return true;
+}
+
+void ClapPluginHost::process(const void *p_src_buffer, godot::AudioFrame *p_dst_buffer, int32_t p_frame_count) {
+	// checkForAudioThread();
+	if (!_plugin.get())
+		return;
+
+	// Fake note in
+	static bool noteIn = false;
+	if (!noteIn) {
+		noteIn = true;
+		clap_event_note ev;
+		ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+		ev.header.type = CLAP_EVENT_NOTE_ON;
+		// ev.header.time = sampleOffset;
+		ev.header.time = 0;
+		ev.header.flags = 0;
+		ev.header.size = sizeof(ev);
+		ev.port_index = 0;
+		// ev.key = key;
+		ev.key = 60;
+		// ev.channel = channel;
+		ev.channel = 0;
+		ev.note_id = -1;
+		// ev.velocity = velocity / 127.0;
+		ev.velocity = 1.0;
+
+		_evIn.push(&ev.header);
+	}
+
+	// Can't process a plugin that is not active
+	if (!isPluginActive())
+		return;
+
+	// Do we want to deactivate the plugin?
+	// if (_scheduleDeactivate) {
+	// 	_scheduleDeactivate = false;
+	// 	if (_state == ActiveAndProcessing)
+	// 		_plugin->stopProcessing();
+	// 	setPluginState(ActiveAndReadyToDeactivate);
+	// 	return;
+	// }
+
+	// We can't process a plugin which failed to start processing
+	if (_state == ActiveWithError)
+		return;
+
+	_process.transport = nullptr;
+
+	_process.in_events = _evIn.clapInputEvents();
+	_process.out_events = _evOut.clapOutputEvents();
+
+	_audioIn.data32 = (float**)&p_src_buffer;
+	_audioIn.channel_count = 1;
+	_audioIn.constant_mask = 0;
+	_audioIn.latency = 0;
+
+	_audioOut.data32 = (float**)&p_dst_buffer;
+	_audioOut.channel_count = 1;
+	_audioOut.constant_mask = 0;
+	_audioIn.latency = 0;
+
+	// TODO * 2 because we pretend we only have only channel, should interleave later
+	_process.frames_count = p_frame_count * 2;
+	_process.audio_inputs = &_audioIn;
+	_process.audio_inputs_count = 1;
+	_process.audio_outputs = &_audioOut;
+	_process.audio_outputs_count = 1;
+
+	_evOut.clear();
+	// generatePluginInputEvents();
+
+	if (isPluginSleeping()) {
+		// if (!_scheduleProcess && _evIn.empty())
+		// 	// The plugin is sleeping, there is no request to wake it up and there are no events to
+		// 		// process
+		// 			return;
+		//
+		// _scheduleProcess = false;
+		if (!_plugin->startProcessing()) {
+			// the plugin failed to start processing
+			setPluginState(ActiveWithError);
+			return;
+		}
+
+		setPluginState(ActiveAndProcessing);
+	}
+
+	int32_t status = CLAP_PROCESS_SLEEP;
+	if (isPluginProcessing()) {
+		status = _plugin->process(&_process);
+	}
+	if (status != CLAP_PROCESS_CONTINUE) {
+		godot::print_line("Processing change");
+	}
+
+	// De-interleave
+	// for (int i = 0; i < p_frame_count / 2; ++i) {
+	// 	p_dst_buffer[i].left = p_dst_buffer[i].left;
+	// }
+
+	handlePluginOutputEvents();
+
+	_evOut.clear();
+	_evIn.clear();
 }
 
 void ClapPluginHost::scanParams() { paramsRescan(CLAP_PARAM_RESCAN_ALL); }
@@ -342,4 +448,93 @@ void ClapPluginHost::scanQuickControls() {
 	//
 	// quickControlsPagesChanged();
 	// quickControlsSetSelectedPage(firstPageId);
+}
+
+void ClapPluginHost::activate(int32_t sample_rate, int32_t blockSize) {
+	// checkForMainThread();
+
+	if (!_plugin.get())
+		return;
+
+	assert(!isPluginActive());
+	if (!_plugin->activate(sample_rate, blockSize, blockSize)) {
+		setPluginState(InactiveWithError);
+		return;
+	}
+
+	// _scheduleProcess = true;
+	setPluginState(ActiveAndSleeping);
+}
+
+void ClapPluginHost::deactivate() {
+	// checkForMainThread();
+
+	if (!isPluginActive())
+		return;
+
+	while (isPluginProcessing() || isPluginSleeping()) {
+		// _scheduleDeactivate = true;
+		// QThread::msleep(10);
+	}
+
+	// _scheduleDeactivate = false;
+
+	_plugin->deactivate();
+	setPluginState(Inactive);
+}
+
+void ClapPluginHost::setPluginState(PluginState state) {
+	switch (state) {
+		case Inactive:
+			CRASH_COND(_state != ActiveAndReadyToDeactivate);
+		break;
+
+		case InactiveWithError:
+			CRASH_COND(_state != Inactive);
+		break;
+
+		case ActiveAndSleeping:
+			CRASH_COND(_state != Inactive && _state != ActiveAndProcessing);
+		break;
+
+		case ActiveAndProcessing:
+			CRASH_COND(_state != ActiveAndSleeping);
+		break;
+
+		case ActiveWithError:
+			CRASH_COND(_state != ActiveAndProcessing);
+		break;
+
+		case ActiveAndReadyToDeactivate:
+			CRASH_COND(_state != ActiveAndProcessing && _state != ActiveAndSleeping &&
+					 _state != ActiveWithError);
+		break;
+
+		default:
+			godot::print_error("Invalid state");
+			std::terminate();
+	}
+
+	_state = state;
+}
+
+bool ClapPluginHost::isPluginActive() const {
+	switch (_state) {
+		case Inactive:
+		case InactiveWithError:
+		   return false;
+		default:
+			return true;
+	}
+}
+
+bool ClapPluginHost::isPluginProcessing() const { return _state == ActiveAndProcessing; }
+
+bool ClapPluginHost::isPluginSleeping() const { return _state == ActiveAndSleeping; }
+
+void ClapPluginHost::handlePluginOutputEvents() {
+	for (uint32_t i = 0; i < _evOut.size(); ++i) {
+		auto h = _evOut.get(i);
+		godot::print_line("got output %d", h->type);
+	}
 }

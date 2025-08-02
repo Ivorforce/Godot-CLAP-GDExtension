@@ -89,17 +89,56 @@ protected:
 	void tailChanged() noexcept override {}
 
 public:
-	const clap_plugin_entry * _plugin_entry;
-	const clap_plugin_factory * _plugin_factory;
+	enum PluginState {
+		// The plugin is inactive, only the main thread uses it
+		Inactive,
+
+		// Activation failed
+		InactiveWithError,
+
+		// The plugin is active and sleeping, the audio engine can call set_processing()
+		ActiveAndSleeping,
+
+		// The plugin is processing
+		ActiveAndProcessing,
+
+		// The plugin did process but is in error
+		ActiveWithError,
+
+		// The plugin is not used anymore by the audio engine and can be deactivated on the main
+		// thread
+		ActiveAndReadyToDeactivate,
+	};
+
+	const clap_plugin_entry *_plugin_entry;
+	const clap_plugin_factory *_plugin_factory;
 	std::unique_ptr<PluginProxy> _plugin;
+
+	clap_audio_buffer _audioIn = {};
+	clap_audio_buffer _audioOut = {};
+	clap::helpers::EventList _evIn;
+	clap::helpers::EventList _evOut;
+	clap_process _process;
+
+	PluginState _state = Inactive;
+	bool _stateIsDirty = false;
 
 	ClapPluginHost();
 	~ClapPluginHost() override = default;
 
 	bool load(const char *path, int plugin_index);
 
-	void _process(const void *p_src_buffer, godot::AudioFrame *p_dst_buffer, int32_t p_frame_count);
-	bool _process_silence() const;
+	void activate(int32_t sample_rate, int32_t blockSize);
+	void deactivate();
+
+	void setPluginState(::ClapPluginHost::PluginState state);
+	bool isPluginProcessing() const;
+	bool isPluginActive() const;
+	bool isPluginSleeping() const;
+	void handlePluginOutputEvents();
+
+	void process(const void *p_src_buffer, godot::AudioFrame *p_dst_buffer, int32_t p_frame_count);
+	bool process_silence() const { return true; }
 };
 
 #endif //CLAP_PLUGIN_HOST_H

@@ -21,6 +21,14 @@ Ref<AudioEffectInstance> ClapAudioEffect::_instantiate() {
 		return {};
 	}
 
+	host->activate(48000, 512);
+
+	// FIXME Crashes the program, probably because it's not set up.
+	// if (!host->_plugin->guiShow()) {
+	// 	print_line("Error showing GUI");
+	// 	return {};
+	// }
+
 	Ref<ClapAudioEffectInstance> effect_instance = { memnew(ClapAudioEffectInstance) };
 	effect_instance->host = host;
 
